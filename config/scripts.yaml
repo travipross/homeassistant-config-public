@@ -1,0 +1,50 @@
+lights_on:
+  alias: Lights On
+  mode: single
+  sequence:
+  - data: {}
+    entity_id: automation.light_webhook
+    service: automation.trigger
+lights_off:
+  alias: Lights Off
+  mode: single
+  sequence:
+  - data: {}
+    entity_id: automation.all_lights_off
+    service: automation.trigger
+unlock_door:
+  alias: Unlock Door
+  mode: single
+  sequence:
+  - data: {}
+    entity_id: automation.unlock_door_webhook
+    service: automation.trigger
+  icon: mdi:lock-open-variant
+enable_auto_lock:
+  alias: Lock - Enable Auto Lock
+  sequence:
+  - service: zwave.set_config_parameter
+    data:
+      node_id: 3
+      parameter: 15
+      value: Enable auto lock
+  mode: single
+  icon: mdi:lock
+disable_auto_lock:
+  alias: Lock - Disable Auto Lock
+  sequence:
+  - service: zwave.set_config_parameter
+    data:
+      node_id: 3
+      parameter: 15
+      value: Disable auto lock
+  mode: single
+  icon: mdi:lock-alert
+vacuum_start_snooze_timer:
+  alias: Vacuum - Start Snooze Timer
+  sequence:
+  - service: timer.start
+    data_template:
+      duration: '{{ states(''input_number.vacuum_snooze_duration'') | int * 60 }}'
+    entity_id: timer.vacuum_snooze_timer
+  mode: single

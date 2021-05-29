@@ -1,0 +1,391 @@
+- id: '1590627292278'
+  alias: Webhook - All Lights On
+  description: ''
+  trigger:
+  - platform: webhook
+    webhook_id: lights-on
+  condition: []
+  action:
+  - data: {}
+    entity_id: all
+    service: light.turn_on
+  - data: {}
+    entity_id: all
+    service: switch.turn_on
+  mode: single
+- id: '1597192624780'
+  alias: Webhook - All Lights Off
+  description: ''
+  trigger:
+  - platform: webhook
+    webhook_id: lights-off
+  condition: []
+  action:
+  - data: {}
+    entity_id: all
+    service: light.turn_off
+  - data: {}
+    entity_id: all
+    service: switch.turn_off
+  mode: single
+- id: '1597404712951'
+  alias: Webhook - Unlock Door
+  description: ''
+  trigger:
+  - platform: webhook
+    webhook_id: unlock-door
+  condition: []
+  action:
+  - device_id: 6904b47b563f4ce99c291d0db9d64b19
+    domain: lock
+    entity_id: lock.schlage_allegion_be469_touchscreen_deadbolt_locked
+    type: unlock
+  mode: single
+- id: '1599313429696'
+  alias: Vacuum - Workday Schedule
+  description: ''
+  trigger:
+  - at: input_datetime.vacuum_time
+    platform: time
+  condition:
+  - condition: state
+    entity_id: binary_sensor.workday_sensor
+    state: 'on'
+  - condition: state
+    entity_id: input_boolean.vacuum_enable_schedule_clean
+    state: 'on'
+  action:
+  - data: {}
+    entity_id: vacuum.jaws
+    service: vacuum.start
+  mode: single
+- id: '1604453244746'
+  alias: Lock Notification - Dead Battery
+  description: ''
+  trigger:
+  - platform: state
+    entity_id: zwave.schlage_allegion_be469_touchscreen_deadbolt
+    to: dead
+  condition: []
+  action:
+  - service: notify.mobile_app_travis_phone
+    data:
+      message: The door lock appears to be dead. Reboot or replace batteries.
+      title: Front Door - Lock Dead
+  mode: single
+- id: '1605118782403'
+  alias: Lock Notification - Access Code
+  description: Except for Travis and Emma
+  trigger:
+  - platform: state
+    entity_id: lock.schlage_allegion_be469_touchscreen_deadbolt_locked
+    to: unlocked
+  condition:
+  - condition: not
+    conditions:
+    - condition: state
+      entity_id: sensor.deadbolt_status_ext
+      state: Travis came home
+    - condition: state
+      entity_id: sensor.deadbolt_status_ext
+      state: Emma came home
+    - condition: state
+      entity_id: sensor.deadbolt_status_ext
+      state: Manually Unlocked
+    - condition: state
+      entity_id: sensor.deadbolt_status_ext
+      state: Unlocked by RF
+  action:
+  - service: notify.mobile_app_travis_phone
+    data:
+      title: Door Unlocked
+      message: '{{ states(''sensor.deadbolt_status_ext'') }}'
+  mode: single
+- id: '1605194203433'
+  alias: Light - Off when away
+  description: Turn off lights when away from home
+  trigger:
+  - platform: zone
+    entity_id: person.emma
+    zone: zone.home
+    event: leave
+  - platform: zone
+    entity_id: person.travis
+    zone: zone.home
+    event: leave
+  condition:
+  - condition: and
+    conditions:
+    - condition: not
+      conditions:
+      - condition: zone
+        entity_id: person.emma
+        zone: zone.home
+    - condition: not
+      conditions:
+      - condition: zone
+        entity_id: person.travis
+        zone: zone.home
+    - condition: state
+      entity_id: input_boolean.light_enable_away
+      state: 'on'
+  action:
+  - service: script.lights_off
+    data: {}
+  mode: single
+- id: '1605236585248'
+  alias: Lock Action - Nobody Home
+  description: When nobody is home, lock the door.
+  trigger:
+  - platform: state
+    entity_id: binary_sensor.people_at_home
+    to: 'off'
+    for: 0:01:30
+  condition:
+  - condition: state
+    entity_id: lock.schlage_allegion_be469_touchscreen_deadbolt_locked
+    state: unlocked
+  action:
+  - choose:
+    - conditions:
+      - condition: state
+        entity_id: input_boolean.lock_enable_away_lock
+        state: 'on'
+      sequence:
+      - device_id: 6904b47b563f4ce99c291d0db9d64b19
+        domain: lock
+        entity_id: lock.schlage_allegion_be469_touchscreen_deadbolt_locked
+        type: lock
+      - service: notify.mobile_app_travis_phone
+        data:
+          title: Door locked automatically
+          message: The door was automatically locked because nobody was detected as
+            being home.
+    - conditions:
+      - condition: state
+        entity_id: input_boolean.lock_enable_away_lock
+        state: 'off'
+      sequence:
+      - service: notify.mobile_app_travis_phone
+        data:
+          title: Door left unlocked
+          message: Nobody is detected at home, but the door is currently unlocked.
+            Would you like to lock now?
+          data:
+            actions:
+            - action: lock_door
+              title: 'Yes'
+    default: []
+  mode: single
+- id: '1605236699183'
+  alias: Lock Action - Schedule
+  description: ''
+  trigger:
+  - platform: time
+    at: input_datetime.lock_time
+  condition:
+  - condition: state
+    entity_id: input_boolean.lock_enable_schedule_lock
+    state: 'on'
+  - condition: not
+    conditions:
+    - condition: state
+      entity_id: lock.schlage_allegion_be469_touchscreen_deadbolt_locked
+      state: 'on'
+  action:
+  - device_id: 6904b47b563f4ce99c291d0db9d64b19
+    domain: lock
+    entity_id: lock.schlage_allegion_be469_touchscreen_deadbolt_locked
+    type: lock
+  - service: notify.mobile_app_travis_phone
+    data:
+      title: Scheduled Lock
+      message: Door was locked as scheduled at {{input_datetime.lock_time}}
+  mode: single
+- id: '1605239579847'
+  alias: Lock Action - Toggle Auto Lock
+  description: ''
+  trigger:
+  - platform: state
+    entity_id: input_boolean.lock_enable_30s_auto_lock
+  condition: []
+  action:
+  - choose:
+    - conditions:
+      - condition: state
+        entity_id: input_boolean.lock_enable_30s_auto_lock
+        state: 'on'
+      sequence:
+      - service: script.enable_auto_lock
+        data: {}
+    - conditions:
+      - condition: state
+        entity_id: input_boolean.lock_enable_30s_auto_lock
+        state: 'off'
+      sequence:
+      - service: script.disable_auto_lock
+        data: {}
+    default: []
+  - service: notify.mobile_app_travis_phone
+    data:
+      title: Auto Lock Toggled
+      message: Auto-Lock set to {{ states('input_boolean.lock_enable_30s_auto_lock')
+        }}
+  mode: single
+- id: '1605711022950'
+  alias: Heater - Schedule Turn On
+  description: Turns on the heater at specified time
+  trigger:
+  - platform: time
+    at: input_datetime.heater_on_time
+  condition:
+  - condition: state
+    entity_id: input_boolean.heater_enable_schedule
+    state: 'on'
+  - condition: state
+    entity_id: binary_sensor.workday_sensor
+    state: 'on'
+  action:
+  - service: switch.turn_on
+    data: {}
+    entity_id: switch.heater
+  mode: single
+- id: '1605711290415'
+  alias: Heater - Schedule Turn Off
+  description: Turns off the heater at specified time
+  trigger:
+  - platform: time
+    at: input_datetime.heater_off_time
+  condition:
+  - condition: state
+    entity_id: input_boolean.heater_enable_schedule
+    state: 'on'
+  action:
+  - service: switch.turn_off
+    data: {}
+    entity_id: switch.heater
+  mode: single
+- id: '1610210877188'
+  alias: NFC LIGHTS ON
+  description: ''
+  trigger:
+  - platform: tag
+    tag_id: 5e0e061d-ac8c-4bc0-a528-3ace5e95d307
+  condition: []
+  action:
+  - service: script.lights_on
+    data: {}
+  mode: single
+- id: '1610211462181'
+  alias: NFC LIGHTS OFF
+  description: ''
+  trigger:
+  - platform: tag
+    tag_id: 6c4ba54a-93cf-4c5f-940f-7fc2c3682b8a
+  condition: []
+  action:
+  - service: script.lights_off
+    data: {}
+  mode: single
+- id: '1610211809837'
+  alias: NFC UNLOCK DOOR
+  description: ''
+  trigger:
+  - platform: tag
+    tag_id: 409dd8ee-336a-48a3-a4db-64ff42c06ddc
+  condition: []
+  action:
+  - device_id: 6904b47b563f4ce99c291d0db9d64b19
+    domain: lock
+    entity_id: lock.schlage_allegion_be469_touchscreen_deadbolt_locked
+    type: unlock
+  mode: single
+- id: '1611432029200'
+  alias: Tag Cupboard LED toggle is scanned
+  description: ''
+  trigger:
+  - platform: tag
+    tag_id: 37f3eb78-b46a-4063-adfe-08b538e2ab34
+  condition: []
+  action:
+  - service: light.toggle
+    data: {}
+    entity_id: light.cupboard_leds
+  mode: single
+- id: '1615484968765'
+  alias: Restart Shark Integration when in Error State
+  description: The SharkIQ integration occasionally gets into an error state due to
+    a bug in the authentication workflow. This automation will reload the integration
+    when this happens, which temporarily resolves the issue.
+  trigger:
+  - platform: state
+    entity_id: vacuum.jaws
+    to: unavailable
+    for: 00:05:00
+  condition: []
+  action:
+  - service: shell_command.shark_restart
+    data: {}
+  mode: single
+- id: '1616597490971'
+  alias: Vacuum - Snooze Start
+  description: ''
+  trigger:
+  - platform: event
+    event_type: timer.started
+    event_data:
+      entity_id: timer.vacuum_snooze_timer
+  condition:
+  - condition: device
+    device_id: 71182d3f13f311ebb0ebfd127183ef00
+    domain: vacuum
+    entity_id: vacuum.jaws
+    type: is_cleaning
+  action:
+  - service: vacuum.stop
+    data: {}
+    entity_id: vacuum.jaws
+  mode: single
+- id: '1616597641602'
+  alias: Vacuum - Snooze End
+  description: ''
+  trigger:
+  - platform: event
+    event_type: timer.finished
+    event_data:
+      entity_id: timer.vacuum_snooze_timer
+  condition: []
+  action:
+  - service: vacuum.start
+    data: {}
+    entity_id: vacuum.jaws
+  mode: single
+- id: '1616622969787'
+  alias: Lock From Mobile App Notification
+  description: ''
+  trigger:
+  - platform: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: lock_door
+  condition: []
+  action:
+  - device_id: 6904b47b563f4ce99c291d0db9d64b19
+    domain: lock
+    entity_id: lock.schlage_allegion_be469_touchscreen_deadbolt_locked
+    type: lock
+  mode: single
+- id: '1621834264525'
+  alias: Welcome Home Greeting
+  description: Greets a person at the door when they arrive home.
+  trigger:
+  - platform: state
+    entity_id: sensor.deadbolt_status_ext
+    to: Emma came home
+  condition: []
+  action:
+  - service: tts.google_translate_say
+    data:
+      entity_id: media_player.living_room_speaker
+      message: Welcome home Emma!
+  mode: single

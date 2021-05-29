@@ -1,0 +1,237 @@
+#############
+## General ##
+#############
+
+# Configure a default setup of Home Assistant (frontend, api, etc)
+default_config:
+
+# Text to speech
+tts:
+  - platform: google_translate
+    base_url: http://192.168.2.100:8123 # Using local IP here allows homeassistant to send audio directly to google home devices via LAN 
+
+
+# Includes
+group: !include groups.yaml
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+homeassistant:
+  customize: !include customize.yaml
+
+
+############
+## Lights ##
+############
+
+# TP-Link
+tplink:
+
+# Lutron
+lutron_caseta:
+    host: 192.168.2.19
+    keyfile:  caseta.key
+    certfile: caseta.crt
+    ca_certs: caseta-bridge.crt
+
+# # Tuya - Superseded by UI configured integration
+# tuya:
+#     username: !secret tuya_email
+#     password: !secret tuya_password
+#     country_code: 1
+#     platform: smart_life
+
+# Lights
+light:
+  - platform: flux_led  # needed for LED strip controlled via "Magic Home" app
+    devices: 
+      192.168.2.20:
+        name: Cupboard LEDs
+        mode: "rgb"
+  - platform: switch # this and others are included so as to make the "switch type" entities appear as "light type" entities (as they control lamps in my home)
+    name: Office Reading Lamp
+    entity_id: switch.reading_lamp
+  - platform: switch
+    name: Living Room Lamp
+    entity_id: switch.living_room_lamp
+  - platform: switch
+    name: Plant Switch
+    entity_id: switch.plant_lamp
+
+##############
+## Hardware ##
+##############
+zwave:
+  usb_path: /dev/ttyUSB0
+  network_key: !secret zwave_key # included from secrets.yaml. This is needed for the door lock
+
+
+######################
+## Google Assistant ##
+######################
+
+google_assistant:
+  project_id: !secret google_proj_id
+  service_account: !include SERVICE_ACCOUNT.JSON
+  secure_devices_pin: !secret google_secure_pin  # needed for door lock
+  report_state: true
+  exposed_domains: # if omitted, all types are exposed. These ones were the types I wanted though.
+    - switch
+    - light
+    - vacuum
+    - lock
+    - input_boolean
+  entity_config:
+    switch.liquor_hutch:
+        expose: false # manual overrides, as I have these switches also configured as "lights" above, which are exposed already
+    switch.plants:
+        expose: false
+    switch.reading_lamp:
+        expose: false
+    switch.living_room_lamp:
+        expose: false
+    input_boolean.vacuum_enable_schedule_clean: # allows for arbitrary control of virtual boolean switches via voice commands
+        name: Toggle - Schedule Vacuum
+    input_boolean.light_enable_away:
+        name: Toggle - Dark When Away
+    input_boolean.lock_enable_30s_auto_lock:
+        name: Toggle - Lock Auto Re-lock
+    input_boolean.lock_enable_away_lock:
+        name: Toggle - Away Lock
+    input_boolean.lock_enable_schedule_lock:
+        name: Toggle - Schedule Lock
+
+#############
+## Sensors ##
+#############
+binary_sensor:
+  # this one is used so I can set automation conditions based on workdays (different from weekdays, in that this considers holidays)
+  - platform: workday
+    country: CA
+    province: NB
+  - platform: template
+    sensors:
+      people_at_home:  # wanted a simple alias to this logical condition for other automations
+        friendly_name: "People at home"
+        value_template: "{{ is_state('person.travis', 'home') or is_state('person.emma', 'home') }}"
+           
+sensor:
+  - platform: template
+    sensors:
+      # template to extract specific lock status value from attributes for easier templating
+      deadbolt_status:
+        friendly_name: "Front Door Lock"
+        value_template: "{{ state_attr('lock.schlage_allegion_be469_touchscreen_deadbolt_locked', 'lock_status') }}"
+      # extended status text for use when displaying
+      deadbolt_status_ext:
+        friendly_name: "Front Door Lock Last State"
+        value_template: >-
+          {% if is_state('zwave.schlage_allegion_be469_touchscreen_deadbolt', 'dead') %}
+            Lock is dead
+          {% elif is_state('sensor.deadbolt_status', 'Unlocked with Keypad by user 3') %}
+            Travis came home
+          {% elif is_state('sensor.deadbolt_status', 'Unlocked with Keypad by user 7') %}
+            Emma came home
+          {% elif is_state('sensor.deadbolt_status', 'Unlocked with Keypad by user 4') %}
+            Parents unlocked the door
+          {% elif is_state('sensor.deadbolt_status', 'Unlocked with Keypad by user 5') %}
+            Candace unlocked the door
+          {% elif is_state('sensor.deadbolt_status', 'Unlocked with Keypad by user 9') %}
+            Jamie unlocked the door
+          {% elif is_state('sensor.deadbolt_status', 'Unlocked with Keypad by user 10') %}
+            Allan unlocked the door
+          {% elif is_state('sensor.deadbolt_status', 'Unlocked with Keypad by user 11') %}
+            Jeannie unlocked the door
+          {% else %}
+            {{states('sensor.deadbolt_status')}}
+          {% endif %}
+      days_since_last_incident:
+        friendly_name: "Days since last incident"
+        value_template: >-
+         {{ ((as_timestamp(now()) - as_timestamp(states('input_datetime.whiskey_broke_something')))/3600/24) | int }}
+        unit_of_measurement: "days"
+      # convenience templates to extract specific info from REST sensor (hooked up to my fuel logger API)
+      car_odometer:
+        friendly_name: "Civic - Current Odometer"
+        value_template: "{{ state_attr('sensor.fuel_logger_vehicle', 'current_odo')  | round(1)}}"
+        unit_of_measurement: "km"
+      car_total_fuel:
+        friendly_name: "Civic - Total Fuel"
+        value_template: "{{ state_attr('sensor.fuel_logger_vehicle', 'total_fuel')  | round(1)}}"
+        unit_of_measurement: "L"
+      car_total_logs:
+        friendly_name: "Civic - Total Fillups"
+        value_template: "{{ state_attr('sensor.fuel_logger_vehicle', 'total_logs')  | int }}"
+      car_avg_mpg:
+        friendly_name: "Civic - Avg. MPG"
+        value_template: "{{ state_attr('sensor.fuel_logger_vehicle', 'avg_mpg')  | round(1)}}"
+        unit_of_measurement: "MPG"
+      car_avg_mpg_imp:
+        friendly_name: "Civic - Avg. MPG (Imperial)"
+        value_template: "{{ state_attr('sensor.fuel_logger_vehicle', 'avg_mpg_imp')  | round(1)}}"
+        unit_of_measurement: "MPG (imp)"
+      car_avg_lp100k:
+        friendly_name: "Civic - Avg. L/100km"
+        value_template: "{{ state_attr('sensor.fuel_logger_vehicle', 'avg_lp100k')  | round(1)}}"
+        unit_of_measurement: "L/100km"
+      car_dist_per_month:
+        friendly_name: "Civic - Distance per Month"
+        value_template: "{{ state_attr('sensor.fuel_logger_vehicle', 'dist_per_month')  | round(1)}}"
+        unit_of_measurement: "km/month"
+      car_fuel_per_month:
+        friendly_name: "Civic - Fuel per Month"
+        value_template: "{{ state_attr('sensor.fuel_logger_vehicle', 'fuel_per_month')  | round(1)}}"
+        unit_of_measurement: "L/month"
+      # android companion app only exposes last reboot, but I wanted a count of uptime
+      travis_phone_uptime_days:
+        friendly_name: "Travis' Phone Uptime"
+        value_template: "{{ ((as_timestamp(now()) - as_timestamp(states('sensor.travis_phone_last_reboot')))/3600/24) | round }}"
+        unit_of_measurement: "days"
+      emma_phone_uptime_days:
+        friendly_name: "Emma's Phone Uptime"      
+        value_template: "{{ ((as_timestamp(now()) - as_timestamp(states('sensor.emma_phone_last_reboot')))/3600/24) | round }}"
+        unit_of_measurement: "days"
+
+  - platform: environment_canada # default config
+
+  # pulls vehicle stats from my self-made api
+  - platform: rest
+    resource: http://localhost:8083/api/vehicles/1
+    json_attributes_path: "$.stats"
+    json_attributes:
+        - total_fuel
+        - total_logs
+        - current_odo
+        - avg_lp100k
+        - avg_mpg
+        - avg_mpg_imp
+        - dist_per_month
+        - fuel_per_month
+    value_template: "OK"
+    name: fuel_logger_vehicle
+    authentication: basic
+    username: !secret fuel_logger_username
+    password: !secret fuel_logger_password
+    
+
+#############
+## Weather ##
+#############
+weather:
+  - platform: environment_canada
+    station: NB/s0000250
+    
+camera:
+  - platform: environment_canada
+    # test camera using motion daemon on raspberry pi
+  - platform: mjpeg
+    mjpeg_url: http://192.168.2.101:8081
+    username: <username>
+    password: <password>
+
+##########
+## Misc ##
+##########
+shell_command:
+  shark_restart: !secret shark_shell_command # this is a hacky workaround to automate the reloading of the shark integration due to a bug which causes daily crashes
